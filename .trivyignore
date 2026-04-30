@@ -12,3 +12,115 @@
 #
 # Leave this file empty (except for comments) until you actually need a waiver.
 # A waiver without a reason is just a mute button, not evidence.
+
+# CVE-2026-22029 — @remix-run/router open-redirect XSS (HIGH, CVSS 8.0).
+# Fix lands in @remix-run/router 1.23.2 / react-router 7.11.1+.
+# Plausible v3.2.0 pulls 1.18.0 transitively via react-router-dom ^6.25.1
+# in assets/dependencies — shipped in the dashboard JS bundle.
+#
+# Exploit prerequisite: the application must call redirect(unsafeUrl) from
+# a react-router loader or action in Data / Framework / RSC mode, with
+# the URL attacker-controlled. Per the upstream advisory there is no
+# impact in Declarative Mode (<BrowserRouter>).
+#
+# Plausible uses createBrowserRouter + <RouterProvider> (Data Mode), but
+# defines routes purely as { path, element } objects. Grep across
+# assets/js/ at v3.2.0: zero matches for `loader:`, zero for `redirect(`,
+# zero imports of `redirect` from react-router. The vulnerable code path
+# is absent in the current dashboard implementation, so the open-redirect
+# sink does not exist.
+#
+# Impact class if the path existed: client-side XSS in the authenticated
+# admin's browser at the Plausible origin. With the path absent, no
+# realized impact.
+#
+# Revisit when Plausible upgrades to react-router 7+ or starts using
+# loaders/actions, or by 2026-10 — whichever first.
+CVE-2026-22029
+
+# CVE-2026-26996, CVE-2026-27903, CVE-2026-27904 — minimatch ReDoS family
+# (each HIGH, CVSS 7.5, DoS only).
+# Fixes are spread across minimatch branches; floor for all three is 3.1.4.
+# Plausible v3.2.0 pulls minimatch 3.1.2 transitively through eslint,
+# jest, prettier, stylelint, tsc — all in assets/devDependencies.
+#
+# Exploit prerequisite for the entire family: the GLOB PATTERN itself
+# must be attacker-controlled. A pattern containing many consecutive `*`
+# wildcards (-26996), multiple non-adjacent `**` globstars (-27903), or
+# nested `*()` extglobs (-27904) compiles to a regex that V8 backtracks
+# exponentially on a non-matching input. The matched string being
+# attacker-controlled does NOT exploit any of these.
+#
+# Plausible's invocations feed minimatch only with hardcoded patterns
+# defined in the upstream maintainer's source (e.g. `js/**`,
+# `**/*.{js,css,ts,tsx}`). minimatch is not present in the runtime image
+# (Mix release ships compiled BEAM bytecode only; no node_modules).
+# For an attacker to land a malicious pattern they would need
+# upstream-source-write privilege — a supply-chain compromise outside
+# the scope of these CVEs.
+#
+# Impact class: process hang in the CI build runner if exploited. Not
+# reachable at runtime by any image consumer.
+#
+# Revisit when Plausible bumps the dev-tool transitive chain (typically
+# follows naturally on the next eslint/jest minor), or by 2026-10 —
+# whichever first.
+CVE-2026-26996
+CVE-2026-27903
+CVE-2026-27904
+
+# CVE-2026-27606 — rollup arbitrary file write via path traversal
+# (HIGH, CVSS 9.8). The 9.8 score reflects worst-case library-API
+# exposure; the realised exposure in Plausible is much narrower.
+# Fix lands in rollup 4.59.0+. Plausible v3.2.0 pins rollup ^4.41.1
+# in tracker/dependencies and invokes it programmatically from
+# tracker/compile.js at image build time to bundle the tracker snippet.
+#
+# Exploit prerequisite: an attacker must control either (a) a CLI named
+# input, (b) a manual chunk alias, or (c) a rollup plugin loaded into
+# the build. Plausible's compile.js feeds rollup with input paths and
+# chunk names that are entirely hardcoded in the upstream source; the
+# only plugin loaded is @rollup/plugin-json from the upstream
+# package.json. None of these is attacker-controllable without first
+# compromising the upstream Plausible repo (a supply-chain class
+# outside the scope of this CVE).
+#
+# Even in a hypothetical exploit case the build runs inside an ephemeral
+# GitHub-hosted runner with no persistent filesystem and no secrets
+# beyond the short-lived GHCR push token scoped to this workflow.
+# rollup is NOT present in the runtime image.
+#
+# Impact class: arbitrary file write within the build container. With
+# Plausible's hardcoded inputs the sink is unreachable; with a supply-
+# chain compromise the runner is the only blast radius.
+#
+# Revisit when Plausible bumps rollup to >= 4.59.0 (likely in v3.2.1 or
+# v3.3.0 via the project's own Dependabot), or by 2026-10 —
+# whichever first.
+CVE-2026-27606
+
+# CVE-2026-33671 — picomatch ReDoS via crafted extglob patterns
+# (HIGH, CVSS 7.5, DoS only).
+# Fixes land in picomatch 4.0.4 / 3.0.2 / 2.3.2.
+# Plausible v3.2.0 pulls picomatch 2.3.1 (assets, transitive via the
+# eslint ecosystem) and 4.0.3 (tracker, transitive via chokidar and
+# rollup). Same exposure shape for both — single waiver covers both rows.
+#
+# Exploit prerequisite: the GLOB PATTERN passed to picomatch must be
+# attacker-controlled. A crafted non-matching extglob like
+# `*(*(*(a|b)))` triggers catastrophic V8 regex backtracking. The
+# matched string being attacker-controlled does not exploit it.
+#
+# In Plausible's call sites picomatch is fed only hardcoded patterns
+# from the upstream source (chokidar watch globs in compile.js,
+# eslint config patterns). picomatch is not present in the runtime
+# image.
+#
+# Impact class: process hang in the CI build runner if exploited
+# (requires upstream-source-write privilege to land). Not reachable
+# at runtime by image consumers.
+#
+# Revisit when Plausible bumps the affected transitive chain (next
+# chokidar / eslint / rollup minor typically pulls picomatch >= 4.0.4),
+# or by 2026-10 — whichever first.
+CVE-2026-33671
