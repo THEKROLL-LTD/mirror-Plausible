@@ -121,9 +121,19 @@ LABEL org.opencontainers.image.source="https://github.com/plausible/analytics" \
 
 RUN adduser -S -H -u 999 -G nogroup plausible
 
+# APT_REFRESH is a daily UTC date string forwarded by the CI workflow.
+# Despite the name (sized for the apt-using overrides in this pipeline),
+# the same mechanism is needed here for apk: BuildKit hashes RUN layers
+# on (parent + command string), so an unchanged Dockerfile would re-use
+# the cached `apk upgrade` layer indefinitely and never pick up new
+# Alpine security advisories. Threading the date into the command bumps
+# the hash once per UTC day. Default `unset` keeps local builds working.
+ARG APT_REFRESH=unset
+
 # apk upgrade picks up any base-image CVE fixes published since the
 # pinned digest was cut. Trivy reads the resulting installed-package set.
-RUN apk upgrade --no-cache && \
+RUN echo "apt-refresh=${APT_REFRESH}" > /etc/.apt-refresh && \
+    apk upgrade --no-cache && \
     apk add --no-cache openssl ncurses libstdc++ libgcc ca-certificates
 
 COPY --from=buildcontainer --chmod=555 /app/_build/${MIX_ENV}/rel/plausible /app
