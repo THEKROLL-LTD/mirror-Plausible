@@ -124,3 +124,88 @@ CVE-2026-27606
 # chokidar / eslint / rollup minor typically pulls picomatch >= 4.0.4),
 # or by 2026-10 — whichever first.
 CVE-2026-33671
+
+# -----------------------------------------------------------------------------
+# Runtime Elixir/Erlang HTTP-stack waivers (Plausible v3.2.1)
+# -----------------------------------------------------------------------------
+# Six HIGH CVEs in upstream's mix.lock that were disclosed after the v3.2.1
+# tag was cut. Plausible has not yet released a bump; the alternative to
+# waiving here is to keep shipping v3.2.0, which contains the actively
+# disclosed `/storybook` RCE (upstream security release of 2026-05-15).
+# Holding back on DoS-class transitive bumps to avoid shipping an RCE fix is
+# the wrong trade.
+#
+# All six waivers share the same deployment-posture argument; they are listed
+# separately at the bottom so the audit trail records each one. The shared
+# rationale:
+#
+# 1. Deployment posture. Plausible Community Edition is operated behind a
+#    reverse proxy (Caddy/Traefik/nginx). This is the documented upstream
+#    deployment shape and is explicitly reinforced by this fork's override —
+#    we drop certbot from the runtime image precisely because TLS termination
+#    and HTTP/1.1↔2 negotiation belong at the proxy layer. The proxy enforces
+#    request-body limits, header-size limits, multipart-size limits, and
+#    HTTP/2 connection/stream caps before traffic reaches cowboy/cowlib.
+#    Five of the six findings are DoS classes whose realised impact requires
+#    the cowboy/cowlib HTTP frontend to face untrusted clients directly with
+#    no upstream limits — not how this image is meant to be deployed, and
+#    not how it is deployed in any consumer we are aware of.
+#
+# 2. postgrex listen/3 is the only non-DoS finding. Its precondition is
+#    user-controlled data flowing into the *channel name* argument of
+#    `Postgrex.Notifications.listen/3`. Plausible's pubsub uses fixed,
+#    source-defined channel atoms (`Plausible.PubSub.*`); no admin UI,
+#    API endpoint, or background job synthesises channel names from
+#    request data. A grep across the upstream v3.2.1 source confirms
+#    that `Notifications.listen` is called only with string literals
+#    or compile-time constants. The injection sink does not exist in
+#    the application's call graph.
+#
+# 3. Image-level mitigation. The runtime image still ships the patched
+#    Alpine base (apk upgrade in the override picks up libssl/libcrypto/
+#    musl fixes on every build), and the cowboy/cowlib processes run as
+#    UID 999 with no shell entrypoint write access. A successful DoS
+#    crashes the BEAM scheduler; it does not yield code execution or
+#    data exfiltration.
+#
+# Impact class accepted: HTTP availability impact behind the reverse proxy
+# (process restart / brief 5xx) for operators who terminate the proxy with
+# generous defaults, multipart uploads enabled, or HTTP/2 without
+# stream/concurrency limits. Operators who care about even that should
+# review their proxy config — every supported deployment shape has the
+# required knobs and they are not Plausible-specific.
+#
+# Revisit when Plausible cuts a release that bumps mix.lock for any of
+# cowboy/cowlib/plug_cowboy/phoenix/postgrex (a single upstream release
+# almost always carries the whole HTTP stack), or by 2026-08-20 —
+# whichever first. At revisit time, drop the corresponding CVE lines.
+
+# CVE-2026-32687 — postgrex 0.21.1 → 0.22.2.
+# Channel-name SQL injection in Postgrex.Notifications.listen/3.
+# Sink unreachable in Plausible v3.2.1 (literal channel names only).
+CVE-2026-32687
+
+# CVE-2026-32688 — plug_cowboy 2.7.5 → 2.8.1.
+# Unauthenticated HTTP/2 `:scheme` atom-table exhaustion DoS.
+# Reverse proxy handles HTTP/2 termination in our supported topology.
+CVE-2026-32688
+
+# CVE-2026-32689 — phoenix 1.8.2 → 1.8.6.
+# Long-poll NDJSON body-splitting causes large memory allocation.
+# Reverse proxy enforces body-size limits ahead of phoenix.
+CVE-2026-32689
+
+# CVE-2026-43970 — cowlib 2.16.0 → 2.16.1.
+# Improper handling of highly compressed data (compression-bomb).
+# Reverse proxy enforces decompressed-body size limits ahead of cowlib.
+CVE-2026-43970
+
+# CVE-2026-7790 — cowlib 2.16.0 → 2.16.1.
+# Uncontrolled resource consumption (parser amplification).
+# Reverse proxy enforces connection / request-rate limits ahead of cowlib.
+CVE-2026-7790
+
+# CVE-2026-8466 — cowboy 2.14.2 → 2.15.0.
+# Unbounded buffer accumulation in multipart header parsing.
+# Reverse proxy enforces multipart-size limits ahead of cowboy.
+CVE-2026-8466
