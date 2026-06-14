@@ -209,3 +209,18 @@ CVE-2026-7790
 # Unbounded buffer accumulation in multipart header parsing.
 # Reverse proxy enforces multipart-size limits ahead of cowboy.
 CVE-2026-8466
+
+# CVE-2026-8468 — plug 1.18.1 → 1.18.2.
+# Unbounded buffer accumulation in multipart header parsing causes DoS —
+# the Plug-layer twin of CVE-2026-8466 (cowboy) above: same fix wave, same
+# impact class. Omitted from the original six v3.2.1 waivers (#9) only
+# because that batch covered cowboy/cowlib/plug_cowboy/phoenix/postgrex but
+# not `plug` itself; it belongs in this block.
+# Reachable path: Plug.Parsers :multipart on the authenticated CSV / Google
+# Analytics import upload. Mitigated identically — the reverse proxy enforces
+# multipart-/body-size limits ahead of Plug, and the upload path requires an
+# authenticated session. DoS only (BEAM process restart); no code execution
+# or data exposure.
+# Revisit with the rest of this block (when upstream bumps mix.lock for the
+# HTTP stack) or by 2026-08-20 — whichever first.
+CVE-2026-8468
