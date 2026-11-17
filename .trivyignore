@@ -1,21 +1,29 @@
-# .trivyignore — waivers for Trivy findings you have reviewed and accepted.
+# .trivyignore — reviewed and accepted Trivy findings for mirror-Plausible.
 #
-# Add one CVE ID per line. Comments above the ID are part of the file's git
-# history and become your audit trail for why a finding is not being fixed.
+# Reviewed:  2026-11-17 against plausible/analytics v3.2.1 (issue #12;
+#            supersedes the unmerged waiver PR #16)
+# Revisit:   2027-01-17 by default, or on the next upstream tag, whichever
+#            comes first. Every "REVERT IF" below must be re-grepped on each
+#            upstream bump; line numbers refer to v3.2.1.
 #
-# Example:
+# Deployment assumptions the "REVERT IF" markers guard:
+#   - Plausible runs behind a reverse proxy that terminates TLS and enforces
+#     request-body / header limits. No dedicated per-route proxy rules are
+#     assumed beyond that.
+#   - The ingestion endpoint (/api/event) and the tracker script are public.
+#     The DASHBOARD and its /live LiveView socket are reachable only from our
+#     own network.
+#   - Outbound HTTP goes only to fixed third parties (Google, Paddle, Sentry,
+#     hCaptcha, Gravatar, DuckDuckGo icons, the configured mail ESP and the
+#     operator's persistor/CDN endpoints). No attacker-chosen URL is fetched.
+# If any of these stops being true, the waivers that cite it are void.
 #
-#   # CVE-2025-12345 — libcurl in upstream base. Not reachable from our
-#   # deployment (container runs behind mTLS ingress, no outbound HTTP).
-#   # Revisit 2026-08 when upstream bumps the base image.
-#   CVE-2025-12345
-#
-# Leave this file empty (except for comments) until you actually need a waiver.
-# A waiver without a reason is just a mute button, not evidence.
+# Fixed, not waived (for the record): CVE-2026-14456 (OpenSSL QUIC DoS) is
+# cleared by the rebuild's `apk upgrade` on the alpine 3.22.8 runtime base.
 
 # CVE-2026-22029 — @remix-run/router open-redirect XSS (HIGH, CVSS 8.0).
 # Fix lands in @remix-run/router 1.23.2 / react-router 7.11.1+.
-# Plausible v3.2.0 pulls 1.18.0 transitively via react-router-dom ^6.25.1
+# Plausible v3.2.1 pulls 1.18.0 transitively via react-router-dom ^6.25.1
 # in assets/dependencies — shipped in the dashboard JS bundle.
 #
 # Exploit prerequisite: the application must call redirect(unsafeUrl) from
@@ -25,7 +33,7 @@
 #
 # Plausible uses createBrowserRouter + <RouterProvider> (Data Mode), but
 # defines routes purely as { path, element } objects. Grep across
-# assets/js/ at v3.2.0: zero matches for `loader:`, zero for `redirect(`,
+# assets/js/ at v3.2.1 (re-checked 2026-11-17): zero matches for `loader:`, zero for `redirect(`,
 # zero imports of `redirect` from react-router. The vulnerable code path
 # is absent in the current dashboard implementation, so the open-redirect
 # sink does not exist.
@@ -35,13 +43,13 @@
 # realized impact.
 #
 # Revisit when Plausible upgrades to react-router 7+ or starts using
-# loaders/actions, or by 2026-10 — whichever first.
+# loaders/actions, or by 2027-01-17 — whichever first.
 CVE-2026-22029
 
 # CVE-2026-26996, CVE-2026-27903, CVE-2026-27904 — minimatch ReDoS family
 # (each HIGH, CVSS 7.5, DoS only).
 # Fixes are spread across minimatch branches; floor for all three is 3.1.4.
-# Plausible v3.2.0 pulls minimatch 3.1.2 transitively through eslint,
+# Plausible v3.2.1 pulls minimatch 3.1.2 transitively through eslint,
 # jest, prettier, stylelint, tsc — all in assets/devDependencies.
 #
 # Exploit prerequisite for the entire family: the GLOB PATTERN itself
@@ -63,7 +71,7 @@ CVE-2026-22029
 # reachable at runtime by any image consumer.
 #
 # Revisit when Plausible bumps the dev-tool transitive chain (typically
-# follows naturally on the next eslint/jest minor), or by 2026-10 —
+# follows naturally on the next eslint/jest minor), or by 2027-01-17 —
 # whichever first.
 CVE-2026-26996
 CVE-2026-27903
@@ -72,7 +80,7 @@ CVE-2026-27904
 # CVE-2026-27606 — rollup arbitrary file write via path traversal
 # (HIGH, CVSS 9.8). The 9.8 score reflects worst-case library-API
 # exposure; the realised exposure in Plausible is much narrower.
-# Fix lands in rollup 4.59.0+. Plausible v3.2.0 pins rollup ^4.41.1
+# Fix lands in rollup 4.59.0+. Plausible v3.2.1 pins rollup ^4.41.1
 # in tracker/dependencies and invokes it programmatically from
 # tracker/compile.js at image build time to bundle the tracker snippet.
 #
@@ -95,14 +103,14 @@ CVE-2026-27904
 # chain compromise the runner is the only blast radius.
 #
 # Revisit when Plausible bumps rollup to >= 4.59.0 (likely in v3.2.1 or
-# v3.3.0 via the project's own Dependabot), or by 2026-10 —
+# v3.3.0 via the project's own Dependabot), or by 2027-01-17 —
 # whichever first.
 CVE-2026-27606
 
 # CVE-2026-33671 — picomatch ReDoS via crafted extglob patterns
 # (HIGH, CVSS 7.5, DoS only).
 # Fixes land in picomatch 4.0.4 / 3.0.2 / 2.3.2.
-# Plausible v3.2.0 pulls picomatch 2.3.1 (assets, transitive via the
+# Plausible v3.2.1 pulls picomatch 2.3.1 (assets, transitive via the
 # eslint ecosystem) and 4.0.3 (tracker, transitive via chokidar and
 # rollup). Same exposure shape for both — single waiver covers both rows.
 #
@@ -122,7 +130,7 @@ CVE-2026-27606
 #
 # Revisit when Plausible bumps the affected transitive chain (next
 # chokidar / eslint / rollup minor typically pulls picomatch >= 4.0.4),
-# or by 2026-10 — whichever first.
+# or by 2027-01-17 — whichever first.
 CVE-2026-33671
 
 # -----------------------------------------------------------------------------
@@ -156,10 +164,9 @@ CVE-2026-33671
 #    `Postgrex.Notifications.listen/3`. Plausible's pubsub uses fixed,
 #    source-defined channel atoms (`Plausible.PubSub.*`); no admin UI,
 #    API endpoint, or background job synthesises channel names from
-#    request data. A grep across the upstream v3.2.1 source confirms
-#    that `Notifications.listen` is called only with string literals
-#    or compile-time constants. The injection sink does not exist in
-#    the application's call graph.
+#    request data. Re-grepped 2026-11-17 at v3.2.1: there is no call to
+#    `Notifications.listen` anywhere in lib/. The injection sink does not
+#    exist in the application's call graph.
 #
 # 3. Image-level mitigation. The runtime image still ships the patched
 #    Alpine base (apk upgrade in the override picks up libssl/libcrypto/
@@ -175,14 +182,16 @@ CVE-2026-33671
 # review their proxy config — every supported deployment shape has the
 # required knobs and they are not Plausible-specific.
 #
+# REVERT IF: the cowboy HTTP frontend is exposed without a reverse proxy.
 # Revisit when Plausible cuts a release that bumps mix.lock for any of
 # cowboy/cowlib/plug_cowboy/phoenix/postgrex (a single upstream release
-# almost always carries the whole HTTP stack), or by 2026-08-20 —
+# almost always carries the whole HTTP stack), or by 2027-01-17 —
 # whichever first. At revisit time, drop the corresponding CVE lines.
 
 # CVE-2026-32687 — postgrex 0.21.1 → 0.22.2.
 # Channel-name SQL injection in Postgrex.Notifications.listen/3.
-# Sink unreachable in Plausible v3.2.1 (literal channel names only).
+# Sink unreachable in Plausible v3.2.1 (no Notifications.listen call site).
+# REVERT IF: any code path calls Postgrex.Notifications.listen.
 CVE-2026-32687
 
 # CVE-2026-32688 — plug_cowboy 2.7.5 → 2.8.1.
@@ -210,17 +219,155 @@ CVE-2026-7790
 # Reverse proxy enforces multipart-size limits ahead of cowboy.
 CVE-2026-8466
 
-# CVE-2026-8468 — plug 1.18.1 → 1.18.2.
-# Unbounded buffer accumulation in multipart header parsing causes DoS —
-# the Plug-layer twin of CVE-2026-8466 (cowboy) above: same fix wave, same
-# impact class. Omitted from the original six v3.2.1 waivers (#9) only
-# because that batch covered cowboy/cowlib/plug_cowboy/phoenix/postgrex but
-# not `plug` itself; it belongs in this block.
-# Reachable path: Plug.Parsers :multipart on the authenticated CSV / Google
-# Analytics import upload. Mitigated identically — the reverse proxy enforces
-# multipart-/body-size limits ahead of Plug, and the upload path requires an
-# authenticated session. DoS only (BEAM process restart); no code execution
-# or data exposure.
-# Revisit with the rest of this block (when upstream bumps mix.lock for the
-# HTTP stack) or by 2026-08-20 — whichever first.
+# ============================================================================
+# BUILD-TIME ONLY. These never reach the shipped image.
+# dockerfiles/Dockerfile.override is two-stage: nodejs/npm/yarn exist only in
+# the buildcontainer (line 65), and the runtime stage copies exactly one thing
+# — /app/_build/${MIX_ENV}/rel/plausible, the compiled Elixir release — plus
+# the entrypoint. It installs only openssl/ncurses/libstdc++/libgcc/ca-certs.
+# There is no node runtime and no node_modules in the final image, so these
+# are fs-scan findings against the build tree, not properties of the artifact.
+# ============================================================================
+
+# brace-expansion 1.1.12 — exponential-time DoS (13149), memory exhaustion in
+# expand() (14257), unbounded intermediate arrays bypassing the 14257
+# mitigation (69152), and native stack exhaustion in parseCommaParts (102276)
+# and in nested expand_() (102278), both added 2026-11-17. All DoS, all HIGH,
+# all need an attacker-supplied brace pattern.
+# Pulled transitively by minimatch, itself pulled by eslint /
+# @typescript-eslint/typescript-estree / filelist / json-schema-to-typescript
+# in assets/ and tracker/. Lint and codegen tooling; needs an
+# attacker-controlled glob pattern, and the only patterns are the repo's own.
+# REVERT IF: node ever ships in the runtime image.
+CVE-2026-13149
+CVE-2026-14257
+CVE-2026-69152
+CVE-2026-102276
+CVE-2026-102278
+
+# postcss 8.5.3 — information disclosure and DoS via crafted CSS (45623), and
+# path traversal in source-map auto-loading (73646). Fix 8.5.12 / 8.5.18.
+# Pulled by stylelint and tailwindcss; it processes the repo's own stylesheets
+# at build time. Both CVEs need attacker-controlled CSS or a crafted source-map
+# comment as input to the processor — here the input is the pinned upstream
+# tree. postcss is not in the release.
+# REVERT IF: node ever ships in the runtime image.
+CVE-2026-45623
+CVE-2026-73646
+
+# source-map-js 1.2.1 — unvalidated per-section offset line in indexed source
+# maps blocks the event loop (93749, HIGH, DoS). Fix 1.2.2. Added 2026-11-17.
+# Pulled by postcss and css-tree in assets/ only; it reads source maps that
+# the build itself produces from the pinned upstream tree. Not in the release.
+# REVERT IF: node ever ships in the runtime image.
+CVE-2026-93749
+
+# nanoid 3.3.11 — infinite loop on crafted size (67213), negative-size input in
+# the non-secure module (67214), and predictable IDs from integer overflow
+# (73086).
+# 73086 is the one that would matter if this were a runtime dependency:
+# predictable IDs are a real problem where IDs are security-bearing. It is not.
+# nanoid is not a declared dependency of assets/ or tracker/ at all — it is
+# pulled by postcss, which uses it to generate source-map identifiers at build
+# time. No `import ... from "nanoid"` exists anywhere in assets/js or
+# tracker/src. All IDs Plausible relies on are generated by the Elixir release.
+# REVERT IF: nanoid becomes a direct frontend dependency, or is imported into
+# the shipped dashboard bundle.
+CVE-2026-67213
+CVE-2026-67214
+CVE-2026-73086
+
+# ============================================================================
+# Elixir/Hex runtime deps. These DO ship in the release. Each is an HTTP CLIENT
+# vulnerability — the attacker must be the SERVER we connect to. Waived on the
+# targets being a fixed, trusted set rather than on the code being unused.
+# ============================================================================
+
+# hackney 1.25.0 — ssl:connect/2 post-handshake upgrade has no timeout, so a
+# stalling TLS peer hangs the connection (HIGH, DoS). Fix 4.0.1, three majors
+# outside the `~> 1.8` pin.
+# hackney has no call site in lib/ or config/ other than as the Bamboo mail
+# adapter's transport: config/runtime.exs:691,702,708 set hackney_opts for the
+# Mailgun / Mandrill / SendGrid adapters. Its only peer is the operator's
+# configured mail provider, and those same lines already set
+# recv_timeout: 10s.
+# REVERT IF: hackney becomes the adapter for any client with a non-fixed peer.
+CVE-2026-47071
+
+# mint 1.7.1 — HTTP/2 client DoS: unbounded streams map growth via
+# PUSH_PROMISE without follow-up HEADERS (48862), and CONTINUATION/HEADERS
+# frame flood (49754). Fix 1.9.0. Transitive via finch 0.20.0.
+# Both require a malicious HTTP/2 SERVER. mint is the transport under Finch,
+# which backs Plausible.HTTPClient. Every caller targets a fixed host:
+#   google/http.ex, google/ga4/http.ex   Google APIs
+#   billing/paddle_api.ex                Paddle
+#   sentry/client.ex                     operator-configured DSN
+#   plausible_web/captcha.ex             hCaptcha
+#   plausible_web/controllers/avatar_controller.ex  www.gravatar.com (pinned)
+#   plausible_web/plugs/favicon.ex       icons.duckduckgo.com, via a static
+#                                        allowlist in referer_favicon_domains.json
+# favicon.ex is the one worth naming: it looks like it fetches user-supplied
+# site domains, but it does not — it maps a referer source to a hostname from
+# that committed JSON file and proxies DuckDuckGo's icon service. No caller
+# fetches an attacker-chosen URL.
+# REVERT IF: any HTTPClient caller starts fetching a user-supplied URL.
+CVE-2026-48862
+CVE-2026-49754
+
+# req 0.5.16 — unbounded archive/compression extraction driven by the response
+# content-type, i.e. a decompression bomb from the server (HIGH). Fix 0.6.1,
+# outside the `~> 0.5.16` pin.
+# Two call sites, both outbound POSTs to non-arbitrary peers:
+#   lib/plausible/ingestion/persistor/remote.ex:64  operator-configured
+#                                                   persistor URL
+#   lib/workers/purge_cdn_cache.ex:54               api.bunny.net (hardcoded)
+# REVERT IF: a Req call is pointed at a user-supplied URL.
+CVE-2026-49755
+
+# phoenix 1.8.2 — channel joins are not bounded per transport, so a single
+# WebSocket connection can be driven to exhaust memory (HIGH, DoS). Fix 1.8.9,
+# which IS inside the `~> 1.8.2` requirement — so an upstream mix.lock refresh
+# closes this on its own. The lockfile pin is what blocks us; bumping it here
+# would be a source fork, which this repo does not do.
+# Honest exposure — the weakest waiver in this file, accepted on impact ceiling
+# and network position, not on unreachability:
+#   - The attack surface is the /live socket (lib/plausible_web/endpoint.ex:22).
+#     Plausible defines no `use Phoenix.Channel` modules of its own, but
+#     LiveView runs on the channel machinery, so the flaw applies. 25 LiveViews
+#     sit behind it.
+#   - `check_origin: true` is set, but that only constrains browsers. A direct
+#     WebSocket client sets its own Origin header, so it is not a control
+#     against this.
+#   - Join accounting happens before a mount can reject an unauthenticated
+#     session, so it is reachable pre-auth by anyone who can reach the port.
+#   - The dev-only /phoenix/live_reload/socket is gated behind `code_reloading?`
+#     and is not in the release, so it adds no surface.
+# Accepted because the dashboard and /live are on our internal segment only —
+# the public surface of this deployment is the ingestion endpoint, which is
+# plain HTTP POST and does not touch the channel machinery. Worst case is an
+# OOM-kill and a container restart: no code execution, no data exposure.
+# REVERT IF: the dashboard or /live becomes reachable from an untrusted
+# network, or upstream refreshes mix.lock to phoenix >= 1.8.9 — whichever comes
+# first. Re-check on every upstream bump.
+CVE-2026-56811
+
+# ============================================================================
+# PATCHED IN OVERRIDE. Fixed in the shipped image; listed only because the CI
+# fs scan reads the cloned upstream mix.lock, which still pins plug 1.18.1.
+# dockerfiles/Dockerfile.override unlocks plug with the requirement narrowed
+# to "~> 1.18.5", re-resolves, and verifies that the lock moved to 1.18.5+
+# and that no other lock entry changed (see "Plug patch" in its header). This is the one documented
+# exception to the "never fork upstream lockfiles" rule.
+# ============================================================================
+
+# CVE-2026-54892 — plug 1.18.1, quadratic-time decoding of nested query/body
+# parameters. Reachable PRE-AUTH on every path: PlausibleWeb.Endpoint runs
+# Plug.Parsers (lib/plausible_web/endpoint.ex:75) before the router, and it
+# always decodes the query string (1 MB default) plus urlencoded bodies
+# (parsers :urlencoded, pass "*/*"). Too exposed to waive, hence the patch.
+# CVE-2026-8468 — plug 1.18.1, unbounded multipart header buffering (DoS).
+# Fixed by the same bump (1.18.2 carries it).
+# REVERT IF: the plug patch is removed from Dockerfile.override, or its guard
+# fails. Drop both lines once upstream's mix.lock pins plug >= 1.18.5.
+CVE-2026-54892
 CVE-2026-8468
