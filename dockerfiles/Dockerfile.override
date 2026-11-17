@@ -31,11 +31,43 @@
 #   - OCI labels are populated from ARG VERSION so `docker inspect`
 #     identifies the image as our mirror build and surfaces the upstream
 #     tag.
+#   - Runtime base is alpine 3.22.8 (upstream: 3.22.2). Same minor, so
+#     musl/openssl ABI is unchanged; the builder stays on upstream's
+#     3.22.2 image because hexpm publishes Elixir 1.19.4/OTP 27.3.4.6
+#     only for that Alpine patch.
+#   - ONE DEPENDENCY PATCH: plug is bumped 1.18.1 -> 1.18.5 inside the
+#     build (see "Plug patch" below). This is a deliberate, documented
+#     exception to this pipeline's "never fork upstream lockfiles" rule.
 #
 # Everything else is preserved: MIX_ENV=ce, USER 999 nonroot, ENTRYPOINT,
-# EXPOSE 8000, VOLUME /var/lib/plausible, CMD ["run"]. No application
-# source is patched — the build is byte-equivalent to upstream up to base
-# image and apk package set.
+# EXPOSE 8000, VOLUME /var/lib/plausible, CMD ["run"]. Apart from the plug
+# patch, no application source or lockfile is modified.
+#
+# Plug patch (2026-11-17, issue #12)
+# ----------------------------------
+# CVE-2026-54892: Plug.Conn.Query.decode is quadratic in the number of
+# bracket levels (a[a][a]...=1). PlausibleWeb.Endpoint runs Plug.Parsers
+# (endpoint.ex:75, parsers :urlencoded/:multipart/:json, pass "*/*")
+# BEFORE the router, and Plug.Parsers always decodes the query string
+# (default limit 1 MB). So every request on every path is affected,
+# including the public, unauthenticated POST /api/event: one request can
+# pin a BEAM scheduler for minutes. That is pre-auth on our public
+# surface, so it is not waivable.
+# Why a patch instead of waiting: the fix (1.18.3) is a patch release
+# inside upstream's own requirement ({:plug, "~> 1.13", override: true}).
+# We take the newest 1.18 patch (1.18.5, 2026-07-09), which has dependency
+# requirements identical to 1.18.1 (mime, plug_crypto, telemetry), so only
+# the plug line in mix.lock moves; a guard enforces that. It also carries
+# the 1.18.2 multipart fix (CVE-2026-8468).
+# The requirement is narrowed to "~> 1.18.5" (>= 1.18.5, < 1.19) so the
+# resolution cannot jump a minor. The step FAILS THE BUILD when upstream's
+# lock no longer pins plug 1.18.1 or the mix.exs line has changed: that
+# is the signal to delete this patch, not to adapt it.
+# Note: the CI fs scan reads the cloned upstream mix.lock, not the patched
+# one, so it still reports both CVEs. .trivyignore carries them with
+# "patched in override" as the reason.
+# REVERT IF: upstream ships plug >= 1.18.5 in mix.lock (expected with the
+# next CE release), or this step's guard fails.
 #
 # When upstream bumps Elixir/Erlang/Alpine in their Dockerfile (visible
 # at https://github.com/plausible/analytics/blob/master/Dockerfile), the
@@ -43,10 +75,12 @@
 # handles this on the configured cadence; manual bump = look up the new
 # tag on Docker Hub and replace both reference + digest.
 
-ARG ALPINE_VERSION=3.22.2
+ARG ALPINE_VERSION=3.22.8
 
 #### Builder
-FROM hexpm/elixir:1.19.4-erlang-27.3.4.6-alpine-${ALPINE_VERSION}@sha256:c129490fa75f7d00a28e293eb8ee5e00d1b7b34da03748b998369e41ef8a0a1e AS buildcontainer
+# Tag spelled out: the builder stays on upstream's alpine 3.22.2 image
+# (see header), independent of the runtime ALPINE_VERSION.
+FROM hexpm/elixir:1.19.4-erlang-27.3.4.6-alpine-3.22.2@sha256:c129490fa75f7d00a28e293eb8ee5e00d1b7b34da03748b998369e41ef8a0a1e AS buildcontainer
 
 ARG MIX_ENV=ce
 
@@ -68,8 +102,28 @@ COPY mix.exs ./
 COPY mix.lock ./
 COPY config ./config
 RUN mix local.hex --force && \
-    mix local.rebar --force && \
+    mix local.rebar --force
+
+# Plug patch, see header. Guards first, so a changed upstream fails loudly.
+# deps.unlock + deps.get (not deps.update) so every other lock entry stays
+# pinned; deps.update would also float plug_crypto (1.2.5 -> 2.x, a major)
+# and telemetry. The diff guard proves only the plug line moved.
+RUN grep -q '"plug": {:hex, :plug, "1.18.1",' mix.lock || \
+      { echo "plug patch: upstream mix.lock no longer pins plug 1.18.1, remove the patch from Dockerfile.override" >&2; exit 1; } && \
+    grep -q '{:plug, "~> 1.13", override: true}' mix.exs || \
+      { echo "plug patch: mix.exs plug requirement changed upstream, review the patch" >&2; exit 1; } && \
+    sed -i 's/{:plug, "~> 1.13", override: true}/{:plug, "~> 1.18.5", override: true}/' mix.exs && \
+    cp mix.lock /tmp/mix.lock.upstream && \
+    mix deps.unlock plug && \
     mix deps.get --only ${MIX_ENV} && \
+    grep -Eq '"plug": [{]:hex, :plug, "1[.]18[.]([5-9]|[1-9][0-9])",' mix.lock || \
+      { echo "plug patch: mix.lock did not resolve to plug >= 1.18.5 (< 1.19)" >&2; exit 1; } && \
+    grep -v '^  "plug": ' /tmp/mix.lock.upstream > /tmp/a && \
+    grep -v '^  "plug": ' mix.lock > /tmp/b && \
+    cmp -s /tmp/a /tmp/b || \
+      { echo "plug patch: mix.lock changed beyond the plug entry" >&2; diff /tmp/a /tmp/b >&2; exit 1; }
+
+RUN mix deps.get --only ${MIX_ENV} && \
     mix deps.compile
 
 COPY assets/package.json assets/package-lock.json ./assets/
@@ -95,7 +149,7 @@ COPY rel rel
 RUN mix release plausible
 
 #### Runtime
-FROM alpine:${ALPINE_VERSION}@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+FROM alpine:${ALPINE_VERSION}@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
 
 # VERSION is injected by the CI workflow via --build-arg. We use it for
 # OCI labels and to populate BUILD_METADATA so the running app surfaces
